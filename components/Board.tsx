@@ -70,6 +70,7 @@ const Board = ({ gameState, onCardPress, onReset, canPress = true, pairCount = D
   useEffect(() => {
     if (!isControlled) {
       setCards(generateDeck(pairCount));
+      resetGame()
       playStartSound();
     }
   }, [isControlled, pairCount]);
