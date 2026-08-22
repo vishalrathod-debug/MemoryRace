@@ -1,15 +1,28 @@
 import { router } from "expo-router";
-import React from "react";
+import { Ionicons } from "@expo/vector-icons";
+import React, { useState } from "react";
 import { Image, Pressable, StyleSheet, Text, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 
 export default function HomeScreen() {
+  const [isDark, setIsDark] = useState(true);
+  const theme = isDark
+    ? { background: "#0F0F12", surface: "#18181C", text: "#FAFAFA", muted: "#2A2A30" }
+    : { background: "#F6F7FB", surface: "#FFFFFF", text: "#18181C", muted: "#D4D4D8" };
+
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={[styles.container, { backgroundColor: theme.background }]}>
+      <Pressable
+        accessibilityLabel={isDark ? "Switch to light theme" : "Switch to dark theme"}
+        onPress={() => setIsDark((dark) => !dark)}
+        style={[styles.themeButton, { backgroundColor: theme.surface, borderColor: theme.muted }]}
+      >
+        <Ionicons name={isDark ? "sunny" : "moon"} size={20} color={isDark ? "#50E3C2" : "#2563EB"} />
+      </Pressable>
       {/* 1. Header Section */}
       <View style={styles.header}>
-        <Text style={styles.title}>MEMORY</Text>
-        <Text style={styles.title}>RACE</Text>
+        <Text style={[styles.title, { color: theme.text }]}>MEMORY</Text>
+        <Text style={[styles.title, { color: theme.text }]}>RACE</Text>
       </View>
 
       {/* 2. Hero Illustration Section */}
@@ -28,17 +41,17 @@ export default function HomeScreen() {
           onPress={() => router.push("/SinglePalyer")}
         >
           <View style={[styles.dot, styles.soloDot]} />
-          <Text style={styles.buttonText}>SOLO PLAY</Text>
+          <Text style={[styles.buttonText, { color: theme.text }]}>SOLO PLAY</Text>
         </Pressable>
 
-        <View style={styles.divider} />
+        <View style={[styles.divider, { backgroundColor: theme.muted }]} />
 
         <Pressable 
           style={({ pressed }) => [styles.button, pressed && styles.buttonPressed]}
           onPress={() => router.push("/Online")}
         >
           <View style={[styles.dot, styles.onlineDot]} />
-          <Text style={styles.buttonText}>1v1 ONLINE</Text>
+          <Text style={[styles.buttonText, { color: theme.text }]}>1v1 ONLINE</Text>
         </Pressable>
       </View>
     </SafeAreaView>
@@ -56,6 +69,18 @@ const styles = StyleSheet.create({
   header: {
     alignItems: "center",
     marginTop: 20,
+  },
+  themeButton: {
+    position: "absolute",
+    top: 18,
+    right: 18,
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderRadius: 6,
+    zIndex: 1,
   },
   title: {
     fontSize: 36,

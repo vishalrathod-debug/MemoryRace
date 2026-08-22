@@ -20,7 +20,6 @@ import { Ionicons } from '@expo/vector-icons';
 
 // 10 pairs = 20 cards total 🃏
 const DEFAULT_PAIRS = 10;
-const COLUMNS = 4;
 const GAP = 8;
 const PADDING = 16;
 
@@ -33,7 +32,7 @@ type BoardProps = {
 };
 
 const Board = ({ gameState, onCardPress, onReset, canPress = true, pairCount = DEFAULT_PAIRS }: BoardProps) => {
-  const { width: screenWidth } = useWindowDimensions();
+  const { width: screenWidth, height: screenHeight } = useWindowDimensions();
 
   // 🃏 Deck & Match State
   const [cards, setCards] = useState<string[]>([]);
@@ -53,10 +52,19 @@ const Board = ({ gameState, onCardPress, onReset, canPress = true, pairCount = D
   const displayedMoves = gameState?.moves ?? moves;
 
   // 📐 Dynamic Sizing Calculations for 20 Cards (4 cols x 5 rows)
+  const columns = displayedCards.length > 30 ? 6 : displayedCards.length > 20 ? 5 : 4;
+  const rows = Math.ceil(displayedCards.length / columns);
   const availableWidth = Math.min(screenWidth, 420) - PADDING * 2;
-  const cardWidth = Math.floor((availableWidth - GAP * (COLUMNS - 1)) / COLUMNS);
+  const cardWidth = Math.floor((availableWidth - GAP * (columns - 1)) / columns);
   // Maintain a sleek 3:4 aspect ratio
-  const cardHeight = Math.floor(cardWidth * 1.3);
+  const availableGridHeight = Math.max(160, screenHeight - 220);
+  const cardHeight = Math.max(
+    44,
+    Math.min(
+      Math.floor(cardWidth * 1.2),
+      Math.floor((availableGridHeight - GAP * (rows - 1)) / rows),
+    ),
+  );
 
   // 🔄 Initialize Game
   useEffect(() => {

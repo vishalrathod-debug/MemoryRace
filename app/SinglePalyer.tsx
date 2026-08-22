@@ -11,7 +11,7 @@ const SinglePalyer = () => {
       <View style={styles.selector}>
         <Text style={styles.selectorLabel}>PAIRS</Text>
         <View style={styles.pairOptions}>
-          {[4, 6, 8, 10].map((count) => (
+          {[4, 6, 8, 10, 12, 16, 20].map((count) => (
             <Pressable
               key={count}
               accessibilityRole="button"
@@ -55,7 +55,10 @@ const styles = StyleSheet.create({
   },
   pairOptions: {
     flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'flex-end',
     gap: 8,
+    maxWidth: 280,
   },
   pairButton: {
     width: 36,
