@@ -14,10 +14,10 @@ type Mode = "host" | "guest";
 
 const makeRoomCode = () => Math.random().toString(36).slice(2, 7).toUpperCase();
 
-// 🔒 Hardcoded Render Server URL (hidden from players)
+// 🔒 Live Render Server URL
 const SERVER_URL =
   process.env.EXPO_PUBLIC_GAME_SERVER_URL ??
-  "https://memory-game-server.onrender.com";
+  "https://memoryrace.onrender.com";
 
 export default function Online() {
   const [roomCode, setRoomCode] = useState(makeRoomCode());
@@ -38,12 +38,16 @@ export default function Online() {
     setMode("guest");
   };
 
+  const handleLeaveRoom = () => {
+    setMode(null);
+  };
+
   // 🎮 Active Game View
   if (mode) {
     return (
       <SafeAreaView style={styles.game}>
         <View style={styles.headerBar}>
-          <Pressable style={styles.leaveButton} onPress={() => setMode(null)}>
+          <Pressable style={styles.leaveButton} onPress={handleLeaveRoom}>
             <Text style={styles.leaveText}>← LEAVE ROOM</Text>
           </Pressable>
           <Text style={styles.headerRoomCode}>ROOM: {roomCode}</Text>
@@ -53,12 +57,13 @@ export default function Online() {
           serverUrl={SERVER_URL}
           roomCode={roomCode.trim().toUpperCase()}
           isHost={mode === "host"}
+          onLeave={handleLeaveRoom}
         />
       </SafeAreaView>
     );
   }
 
-  // 🚪 Clean Lobby UI (No Server Field)
+  // 🚪 Clean Lobby UI
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
@@ -192,53 +197,3 @@ const styles = StyleSheet.create({
   secondaryText: { color: "#FAFAFA", fontSize: 14, fontWeight: "800", letterSpacing: 1 },
   buttonDisabled: { opacity: 0.45 },
 });
-/* Legacy route retained below for reference.
-
-interface OnlineProps {
-  serverUrl: string;
-  roomCode: string;
-  isHost: boolean;
-}
-
-export const Online: React.FC<OnlineProps> = ({
-  serverUrl,
-  roomCode,
-  isHost,
-}) => {
-  // Track opponent's last flipped card index
-  const [remoteFlipIndex, setRemoteFlipIndex] = useState<number | null>(null);
-
-  // 1️⃣ Catch incoming opponent moves over WebRTC
-  const handleRemoteMove = useCallback((move: GameMove) => {
-    if (move.type === "FLIP") {
-      setRemoteFlipIndex(move.cardIndex);
-    }
-  }, []);
-
-  // 2️⃣ Connect to WebRTC
-  const { isConnected, sendCardFlip } = useWebRTC(
-    serverUrl,
-    roomCode,
-    isHost,
-    handleRemoteMove
-  );
-
-  // 3️⃣ Send card flip to peer when local player taps
-  const handleLocalCardPress = (cardIndex: number) => {
-    if (isConnected) {
-      sendCardFlip(cardIndex);
-    }
-  };
-
-  return (
-    <Board
-      onCardPress={handleLocalCardPress}
-      remoteFlipIndex={remoteFlipIndex}
-      isConnected={isConnected}
-      roomCode={roomCode}
-    />
-  );
-};
-
-export default Online;
-*/

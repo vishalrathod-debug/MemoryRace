@@ -5,6 +5,7 @@ export interface GameState {
   deck: string[];
   flippedIndices: number[];
   matchedIndices: number[];
+  scores: [number, number];
   moves: number;
   currentTurn: 0 | 1;
   locked: boolean;
@@ -13,185 +14,200 @@ export interface GameState {
 
 type ConnectionStatus = "connecting" | "waiting" | "ready" | "disconnected";
 
-/** Keeps game state authoritative on the server for identical boards on both devices. */
-export const useWebRTC = (serverUrl: string, roomCode: string, isHost: boolean) => {
+const isValidGameState = (state: GameState): boolean => {
+  return (
+    Array.isArray(state.deck) &&
+    Array.isArray(state.flippedIndices) &&
+    Array.isArray(state.matchedIndices) &&
+    Array.isArray(state.scores) &&
+    state.scores.length === 2 &&
+    typeof state.moves === "number" &&
+    (state.currentTurn === 0 || state.currentTurn === 1) &&
+    typeof state.locked === "boolean" &&
+    typeof state.players === "number"
+  );
+};
+
+/**
+ * Keeps the game state authoritative on the server.
+ *
+ * Both players receive the same room_state from the server.
+ */
+export const useWebRTC = (
+  serverUrl: string,
+  roomCode: string,
+  isHost: boolean,
+) => {
   const [game, setGame] = useState<GameState | null>(null);
   const [status, setStatus] = useState<ConnectionStatus>("disconnected");
   const [error, setError] = useState<string | null>(null);
+
   const socketRef = useRef<Socket | null>(null);
 
   useEffect(() => {
-    if (!serverUrl || !roomCode) return;
+    if (!serverUrl || !roomCode) {
+      return;
+    }
 
     setStatus("connecting");
     setError(null);
-    const socket = io(serverUrl, { transports: ["websocket"] });
+    setGame(null);
+
+    const socket = io(serverUrl, {
+      transports: ["websocket"],
+    });
+
     socketRef.current = socket;
-    socket.on("connect", () => socket.emit(isHost ? "create_room" : "join_room", { roomCode }));
+
+    /*
+     * CONNECT
+     */
+    socket.on("connect", () => {
+      console.log("Socket connected:", socket.id);
+
+      socket.emit(isHost ? "create_room" : "join_room", {
+        roomCode,
+      });
+    });
+
+    /*
+     * SERVER GAME STATE
+     *
+     * This is the important event for scores.
+     *
+     * The server sends:
+     *
+     * {
+     *   deck,
+     *   flippedIndices,
+     *   matchedIndices,
+     *   scores,
+     *   moves,
+     *   currentTurn,
+     *   locked,
+     *   players
+     * }
+     */
     socket.on("room_state", (nextGame: GameState) => {
-      setGame(nextGame);
+      if (!isValidGameState(nextGame)) {
+        console.warn("Received invalid game state:", nextGame);
+        return;
+      }
+
+      console.log(
+        "ROOM STATE:",
+        "scores =",
+        nextGame.scores,
+        "moves =",
+        nextGame.moves,
+        "turn =",
+        nextGame.currentTurn,
+      );
+
+      /*
+       * Create a new state object and a new scores array.
+       *
+       * This guarantees React receives a new reference.
+       */
+      const safeGame: GameState = {
+        ...nextGame,
+        deck: [...nextGame.deck],
+        flippedIndices: [...nextGame.flippedIndices],
+        matchedIndices: [...nextGame.matchedIndices],
+        scores: [nextGame.scores[0], nextGame.scores[1]],
+      };
+
+      setGame(safeGame);
+
       setStatus(nextGame.players === 2 ? "ready" : "waiting");
     });
+
+    /*
+     * SERVER ERROR
+     */
     socket.on("error_message", (message: string) => {
+      console.log("Server error:", message);
+
       setError(message);
       setStatus("disconnected");
     });
-    socket.on("connect_error", () => {
+
+    /*
+     * CONNECTION ERROR
+     */
+    socket.on("connect_error", (connectionError) => {
+      console.log("Socket connection error:", connectionError.message);
+
       setError("Could not reach the game server.");
+
       setStatus("disconnected");
     });
-    socket.on("disconnect", () => setStatus("disconnected"));
+
+    /*
+     * DISCONNECT
+     */
+    socket.on("disconnect", (reason) => {
+      console.log("Socket disconnected:", reason);
+
+      setStatus("disconnected");
+    });
+
+    /*
+     * CLEANUP
+     */
     return () => {
       socket.disconnect();
       socketRef.current = null;
     };
   }, [serverUrl, roomCode, isHost]);
 
-  const sendCardFlip = useCallback((cardIndex: number) => {
-    socketRef.current?.emit("flip_card", { roomCode, cardIndex });
-  }, [roomCode]);
-  const resetGame = useCallback(() => {
-    socketRef.current?.emit("reset_game", { roomCode });
-  }, [roomCode]);
+  /*
+   * FLIP CARD
+   */
+  const sendCardFlip = useCallback(
+    (cardIndex: number) => {
+      const socket = socketRef.current;
 
-  return { game, status, error, sendCardFlip, resetGame };
-};
+      if (!socket) {
+        return;
+      }
 
-/* Legacy WebRTC implementation retained below for reference.
+      if (!socket.connected) {
+        return;
+      }
 
-// 🌐 STUN server configuration object
-const peerConfiguration = {
-  iceServers: [{ urls: "stun:stun.l.google.com:19302" }],
-};
-
-// 📦 Custom interface for signaling payloads swapped via Socket.io
-interface SignalPayload {
-  sdp?: {
-    type: "offer" | "answer" | "pranswer" | "rollback";
-    sdp: string;
-  };
-  candidate?: {
-    candidate: string;
-    sdpMid?: string | null;
-    sdpMLineIndex?: number | null;
-  };
-}
-
-// 🃏 Data payload structure for P2P messages sent across devices
-export interface GameMove {
-  type: "FLIP" | "MATCH" | "RESET";
-  cardIndex: number;
-}
-
-export const useWebRTC = (
-  serverUrl: string,
-  roomCode: string,
-  isHost: boolean,
-  onMoveReceived?: (move: GameMove) => void,
-) => {
-  const [dataChannel, setDataChannel] = useState<any>(null);
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-
-  const pc = useRef<RTCPeerConnection | null>(null);
-  const socket = useRef<Socket | null>(null);
-
-  // 1️⃣ Helper to configure and listen to the DataChannel
-  const setupDataChannel = useCallback(
-    (dc: any) => {
-      dc.onopen = () => {
-        console.log("⚡ Direct Peer-to-Peer DataChannel Connected!");
-        setIsConnected(true);
-      };
-
-      dc.onmessage = (event: { data: string }) => {
-        try {
-          const move: GameMove = JSON.parse(event.data);
-          console.log("📩 Received Game Move:", move);
-          if (onMoveReceived) {
-            onMoveReceived(move);
-          }
-        } catch (error) {
-          console.error("Error parsing game move:", error);
-        }
-      };
-
-      setDataChannel(dc);
+      socket.emit("flip_card", {
+        roomCode,
+        cardIndex,
+      });
     },
-    [onMoveReceived],
+    [roomCode],
   );
 
-  useEffect(() => {
-    if (!serverUrl || !roomCode) return;
+  /*
+   * RESET GAME
+   */
+  const resetGame = useCallback(() => {
+    const socket = socketRef.current;
 
-    // Connect to Render signaling server & initialize Peer Connection
-    socket.current = io(serverUrl);
-    pc.current = new RTCPeerConnection(peerConfiguration);
-
-    // 2️⃣ Relay local ICE candidate network info to peer
-    pc.current.onicecandidate = (event: any) => {
-      if (event.candidate && socket.current) {
-        const candidateData = event.candidate.toJSON
-          ? event.candidate.toJSON()
-          : event.candidate;
-        socket.current.emit("signal", {
-          roomCode,
-          data: { candidate: candidateData },
-        });
-      }
-    };
-
-    if (isHost) {
-      // 3️⃣ Host creates the DataChannel & sends offer upon Guest joining
-      const dc = pc.current.createDataChannel("gameChannel");
-      setupDataChannel(dc);
-
-      socket.current.on("player_joined", async () => {
-        if (!pc.current || !socket.current) return;
-        const offer = await pc.current.createOffer({});
-        await pc.current.setLocalDescription(offer);
-        socket.current.emit("signal", { roomCode, data: { sdp: offer } });
-      });
-    } else {
-      // 4️⃣ Guest listens for incoming DataChannel created by Host
-      pc.current.ondatachannel = (event: any) => {
-        setupDataChannel(event.channel);
-      };
+    if (!socket) {
+      return;
     }
 
-    // 5️⃣ Process incoming WebRTC signaling data
-    socket.current.on("signal", async ({ data }: { data: SignalPayload }) => {
-      if (!pc.current) return;
+    if (!socket.connected) {
+      return;
+    }
 
-      if (data.sdp) {
-        await pc.current.setRemoteDescription(
-          new RTCSessionDescription(data.sdp),
-        );
-        if (data.sdp.type === "offer") {
-          const answer = await pc.current.createAnswer();
-          await pc.current.setLocalDescription(answer);
-          if (socket.current) {
-            socket.current.emit("signal", { roomCode, data: { sdp: answer } });
-          }
-        }
-      } else if (data.candidate) {
-        await pc.current.addIceCandidate(new RTCIceCandidate(data.candidate));
-      }
+    socket.emit("reset_game", {
+      roomCode,
     });
+  }, [roomCode]);
 
-    return () => {
-      socket.current?.disconnect();
-      pc.current?.close();
-    };
-  }, [serverUrl, roomCode, isHost, setupDataChannel]);
-
-  // 6️⃣ Function to transmit card flips directly to the peer
-  const sendCardFlip = (cardIndex: number) => {
-    if (dataChannel && dataChannel.readyState === "open") {
-      const move: GameMove = { type: "FLIP", cardIndex };
-      dataChannel.send(JSON.stringify(move));
-    }
+  return {
+    game,
+    status,
+    error,
+    sendCardFlip,
+    resetGame,
   };
-
-  return { isConnected, sendCardFlip };
 };
-*/
