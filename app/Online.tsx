@@ -1,11 +1,11 @@
 import React, { useState } from "react";
 import {
-  Alert,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
+    Alert,
+    Pressable,
+    StyleSheet,
+    Text,
+    TextInput,
+    View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { MultiplayerWrapper } from "../components/MultiplayerWrapper";
@@ -69,7 +69,7 @@ export default function Online() {
       <View style={styles.content}>
         <Text style={styles.title}>ONLINE MATCH</Text>
         <Text style={styles.subtitle}>
-          Create a room or enter a friend's code to join.
+          Create a room or enter a friend&apos;s code to join.
         </Text>
 
         <View style={styles.labelRow}>
